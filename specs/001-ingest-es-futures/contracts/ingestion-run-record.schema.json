@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quant-dataflow.internal/schemas/ingestion-run-record.schema.json",
+  "title": "IngestionRunRecord",
+  "description": "Lineage/audit record for one ingestion run, matching data-model.md#IngestionRunRecord",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "trigger",
+    "requested_dates",
+    "started_at",
+    "code_version",
+    "config_version",
+    "outcome_by_date"
+  ],
+  "properties": {
+    "run_id": { "type": "string", "format": "uuid" },
+    "trigger": { "enum": ["scheduled", "manual_backfill"] },
+    "requested_dates": {
+      "type": "array",
+      "items": { "type": "string", "format": "date" },
+      "minItems": 1
+    },
+    "started_at": { "type": "string", "format": "date-time" },
+    "completed_at": { "type": "string", "format": "date-time" },
+    "code_version": { "type": "string", "minLength": 1 },
+    "config_version": { "type": "string", "minLength": 1 },
+    "outcome_by_date": {
+      "type": "object",
+      "additionalProperties": {
+        "enum": ["success", "failed", "skipped_non_trading_day"]
+      }
+    },
+    "error_detail": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

@@ -4,6 +4,12 @@ __pycache__/
 .venv/
 venv/
 .env
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.aws-sam/
 
 # Local Claude Code state (may contain machine-specific settings/tokens)
 .claude/settings.local.json

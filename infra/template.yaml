@@ -1,0 +1,153 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Daily ES futures ingestion from Polygon.io into S3 (feature 001-ingest-es-futures).
+  Lambda + EventBridge Scheduler, per specs/001-ingest-es-futures/contracts/daily-job.md.
+
+Parameters:
+  RawBucketName:
+    Type: String
+    Description: Name of the existing S3 bucket the raw zone is written to.
+  PolygonApiKeySecretArn:
+    Type: String
+    Description: ARN of the Secrets Manager secret holding the Polygon.io API key.
+  CodeVersion:
+    Type: String
+    Description: Git commit SHA of the deployed code, recorded on every artifact for lineage.
+  ScheduleExpression:
+    Type: String
+    Default: "cron(0 20 * * ? *)"
+    Description: >
+      When the daily job runs. Default 8:00 PM ET (research.md item 8), comfortably
+      inside the SC-001 9:00 PM ET availability window.
+  ScheduleTimezone:
+    Type: String
+    Default: "America/New_York"
+  RetryMaxAttempts:
+    Type: String
+    Default: "5"
+  RetryBackoffBaseSeconds:
+    Type: String
+    Default: "1.0"
+  AlarmNotificationTopicArn:
+    Type: String
+    Description: SNS topic the CloudWatch alarms publish to.
+
+Resources:
+  DailyIngestionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: es-futures-daily-ingestion
+      CodeUri: ../
+      Handler: es_futures_ingest.daily_job.handler
+      Runtime: python3.12
+      Timeout: 120
+      MemorySize: 256
+      Environment:
+        Variables:
+          RAW_BUCKET_NAME: !Ref RawBucketName
+          POLYGON_API_KEY_SECRET_ARN: !Ref PolygonApiKeySecretArn
+          RETRY_MAX_ATTEMPTS: !Ref RetryMaxAttempts
+          RETRY_BACKOFF_BASE_SECONDS: !Ref RetryBackoffBaseSeconds
+          CODE_VERSION: !Ref CodeVersion
+      Policies:
+        - Statement:
+            - Sid: WriteRawZone
+              Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:ListBucket
+                - s3:GetObject
+              Resource:
+                - !Sub "arn:aws:s3:::${RawBucketName}"
+                - !Sub "arn:aws:s3:::${RawBucketName}/raw/*"
+                - !Sub "arn:aws:s3:::${RawBucketName}/lineage/*"
+            - Sid: ReadPolygonSecret
+              Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref PolygonApiKeySecretArn
+
+  DailyIngestionSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: es-futures-daily-ingestion-schedule
+      Description: Triggers the daily ES futures ingestion Lambda (contracts/daily-job.md)
+      ScheduleExpression: !Ref ScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn: !GetAtt DailyIngestionFunction.Arn
+        RoleArn: !GetAtt SchedulerInvocationRole.Arn
+
+  SchedulerInvocationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeDailyIngestionFunction
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt DailyIngestionFunction.Arn
+
+  # Fires on any Lambda invocation error (contracts/daily-job.md failure-signaling
+  # requirement) — a run that started but failed.
+  DailyIngestionErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: es-futures-daily-ingestion-errors
+      AlarmDescription: The daily ES futures ingestion Lambda invocation failed.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref DailyIngestionFunction
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlarmNotificationTopicArn
+
+  # Fires when the Lambda was never even invoked for a full day (e.g. the
+  # schedule itself broke) — distinct from DailyIngestionErrorsAlarm, per
+  # SC-001 and tasks.md T034. TreatMissingData: breaching is deliberate here:
+  # zero invocations in the period is itself the failure condition.
+  DailyIngestionMissedRunAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: es-futures-daily-ingestion-missed-run
+      AlarmDescription: >
+        No successful daily ES futures ingestion invocation was recorded for
+        the expected trading day (SC-001: available by 9:00 PM ET).
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref DailyIngestionFunction
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref AlarmNotificationTopicArn
+
+Outputs:
+  DailyIngestionFunctionArn:
+    Value: !GetAtt DailyIngestionFunction.Arn
+  DailyIngestionScheduleArn:
+    Value: !GetAtt DailyIngestionSchedule.Arn
