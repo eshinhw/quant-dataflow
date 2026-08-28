@@ -1,50 +1,91 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report
+- Version change: [TEMPLATE] → 1.0.0 (initial ratification; no prior concrete version existed)
+- Modified principles: none (first concrete adoption of the template scaffold)
+- Added sections:
+  - I. Data Integrity & Reproducibility (NON-NEGOTIABLE)
+  - II. Observability & Auditability
+  - III. Simplicity & YAGNI
+  - Data & Pipeline Standards (Section 2)
+  - Development Workflow & Quality Gates (Section 3)
+  - Governance
+- Removed sections: Principle slots IV and V from the template scaffold (this project
+  defines 3 core principles by explicit choice, not 5)
+- Templates requiring follow-up: none outstanding — plan/spec/tasks templates read this
+  file at runtime and do not embed principle text themselves
+- Deferred placeholders: none; all bracketed tokens resolved
+-->
+
+# Quant Dataflow Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Data Integrity & Reproducibility (NON-NEGOTIABLE)
+All pipeline transformations MUST be deterministic and idempotent: given the same input
+data, configuration, and code version, re-running a pipeline MUST produce identical output.
+Raw source data MUST NOT be mutated in place — transformations MUST produce new, versioned
+artifacts or datasets, leaving the original input intact and re-runnable. Every dataset and
+pipeline run MUST be traceable to the exact input data version, code version (commit SHA),
+and configuration that produced it.
+**Rationale**: this project moves and transforms market/financial data that feeds downstream
+trading and research decisions. Silent corruption, non-reproducible transformations, or
+untraceable outputs are not recoverable after the fact and can propagate directly into bad
+decisions — they must be structurally prevented, not caught later.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. Observability & Auditability
+Every pipeline stage MUST emit structured (not free-text) logs capturing its inputs, outputs,
+record counts, and timing. Data lineage — source → transformation → destination — MUST be
+recorded and queryable for any dataset the pipeline produces. Failures MUST fail loudly:
+raising, alerting, or halting the pipeline rather than silently dropping, defaulting, or
+skipping bad records. Partial failures MUST be flagged as such, never absorbed into a
+"successful" run.
+**Rationale**: operators and downstream consumers must be able to answer "where did this
+number come from and is it trustworthy" for any value in the system, and data quality
+problems must surface before they reach a downstream consumer, not after.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. Simplicity & YAGNI
+New abstractions, frameworks, services, or infrastructure MUST be justified by a current,
+concrete need — not by an anticipated future requirement. The simplest pipeline design that
+satisfies the Data Integrity and Observability principles above MUST be preferred; added
+complexity (a new service, queue, orchestrator, or abstraction layer) MUST be explicitly
+justified in the relevant plan or PR description. Duplicate logic MUST be consolidated, and
+unused code paths MUST be removed rather than kept "just in case."
+**Rationale**: unnecessary complexity in data pipelines is a leading source of silent bugs
+and materially slows incident response when data quality issues do occur.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+## Data & Pipeline Standards
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+Every pipeline or dataset MUST define an explicit schema contract (field names, types,
+nullability) at its boundaries, and breaking schema changes MUST be versioned rather than
+applied in place. External data feed credentials and connection secrets MUST NOT be
+committed to the repository and MUST be sourced from environment configuration or a secrets
+manager. Before a pipeline change reaches production, it MUST be exercised against sample or
+replayed historical data to validate correctness, not only unit-level logic.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+## Development Workflow & Quality Gates
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
-
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
-
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+Changes MUST follow the Spec Kit workflow (specify → plan → tasks → implement) for
+non-trivial features, so that intent, design, and task breakdown are recorded before code is
+written. Every pull request MUST be reviewed by at least one other contributor before merge.
+CI MUST run data validation checks (schema, integrity, lineage smoke tests where applicable)
+as a merge gate, not merely unit tests. `/speckit-plan` and `/speckit-implement` runs MUST
+include an explicit Constitution Check against the principles above; any deviation MUST be
+recorded and justified in the plan's Complexity Tracking section rather than silently
+introduced.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution supersedes ad hoc team practices and prior undocumented conventions for
+this repository. Amendments are made by editing `.specify/memory/constitution.md` directly
+(via `/speckit-constitution`), describing the change and rationale, and bumping the version
+according to semantic versioning: MAJOR for backward-incompatible principle removals or
+redefinitions, MINOR for adding a new principle or materially expanding guidance, PATCH for
+clarifications and non-semantic wording fixes. Every amendment MUST update the Sync Impact
+Report at the top of this file and the version/date line below.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+All plans and implementations MUST verify compliance with these principles at the
+Constitution Check gate; unjustified complexity or violations MUST block progress until
+resolved or explicitly justified. This file is the source of truth for project governance —
+where other guidance documents conflict with it, this constitution wins.
+
+**Version**: 1.0.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-08-26
